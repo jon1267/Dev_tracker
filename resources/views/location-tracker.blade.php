@@ -8,6 +8,10 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Location Tracker</title>
     <style>
+        body, html {
+            /*height: 100%;
+            margin: 0; */
+        }
         #map {
             height: calc(100% - 60px);
         }
@@ -41,7 +45,6 @@
         <div class="spinner"></div>
         <div>Initializing Map...</div>
     </div>
-    <h1>Location Tracker</h1>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
@@ -51,6 +54,13 @@
         window.REVERB_PORT = '{{ env('VITE_REVERB_PORT', env('REVERB_PORT', 443)) }}';
         window.REVERB_SCHEME = '{{ env('VITE_REVERB_SCHEME', env('REVERB_SCHEME', 'https')) }}';
         window.sessionId = '{{ session()->getId() }}';
+
+        // console.log('REVERB_KEY:', window.REVERB_KEY);
+        // console.log('REVERB_HOST:', window.REVERB_HOST);
+        // console.log('REVERB_PORT:', window.REVERB_PORT);
+        // console.log('REVERB_SCHEME:', window.REVERB_SCHEME);
+        // console.log('Session ID:', window.sessionId);
+
     </script>
 
     @vite(['resources/js/app.js'])
@@ -66,15 +76,15 @@
                 const isMe = id === window.sessionId;
                 if (!markers[id]) {
                     const icon = L.divIcon({
-                        html: `<div style="background: ${isMe ? '#667eea' : '#10b981'};
-                        width: 18px;height: 18px;border-radius: 50%;border: 2px solid #fff;box-shadow: 0 1px 4px #000;"></div>`,
-                        iconSize: [18, 18], iconAnchor: [9, 9]
+                        html: `<div style="background:${isMe?'#667eea':'#10b981'};
+                        width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow: 0 1px 4px #000;"></div>`,
+                        iconSize: [18,18], iconAnchor: [9,9]
                     });
 
                     markers[id] = L.marker([lat, lng], { icon }).addTo(map)
-                    .bindPopup(`${isMe ? 'You' : 'User'}<br>${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+                    .bindPopup(`${isMe?'You':'User'}<br>${lat.toFixed(4)}, ${lng.toFixed(4)}`);
                 } else {
-                    markers[id].setLatLng([lat, lng]);
+                    markers[id].setLatLng([lat,lng]);
                 }
 
                 document.getElementById('active-users').textContent = Object.keys(markers).length;
@@ -83,7 +93,7 @@
                     map.setView([lat, lng], 16);
                     document.getElementById('your-location').textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
                 }
-            }
+            };
 
             const showError = (msg) => {
                 const e = document.getElementById('error');
@@ -100,12 +110,34 @@
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf_token"]').content
                     },
                     body: JSON.stringify({latitude: lat, longitude: lng })
-                }).catch( () => showError('Send location failed'));
+                }).catch(() => showError('Send location failed'));
             };
 
             if (navigator.geolocation) {
                 document.getElementById('status').textContent = 'Getting location...';
+                navigator.geolocation.watchPosition(
+                    p => {
+                        sendLocation(p.coords.latitude, p.coords.longitude);
+                        document.getElementById('status').textContent = 'Tracking';
+                    },
+                    () => {
+                        showError('Location denied');
+                        document.getElementById('status').textContent = 'Denied';
+                    },
+                    {enableHighAccuracy: false, timeout: 20000, maximumAge: 10000}
+                );
+            } else {
+                showError('Geolocation not supported');
             }
+
+            if (window.Echo) {
+                window.Echo.channel('location-tracking')
+                      .listen('Location.updated', e => updateMarker(e.userId, e.latitude, e.longitude));
+            } else {
+                showError('Realtime connection failed.');
+            }
+
+            document.querySelector('.loading').style.display = 'none';
         });
     </script>
 
